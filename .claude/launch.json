@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Frontend (Vite/React)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "Backend API (FastAPI)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "apps.api.main"],
+      "port": 8000
+    },
+    {
+      "name": "MCP Server (Snowflake Bridge)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "apps.mcp.main"],
+      "port": 5000
+    }
+  ]
+}

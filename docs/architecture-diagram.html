@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>π-Skills Platform — System Architecture</title>
+<style>
+  /* ─── Reset & Base ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    padding: 32px 24px 48px;
+  }
+
+  /* ─── Page Header ───────────────────────────────────────── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .page-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #e6edf3;
+  }
+  .page-header h1 span { color: #58a6ff; }
+  .page-header p {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #8b949e;
+    letter-spacing: 0.3px;
+  }
+
+  /* ─── Diagram Wrapper ───────────────────────────────────── */
+  .diagram {
+    max-width: 1280px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ─── Layer Container ───────────────────────────────────── */
+  .layer {
+    border: 1.5px solid;
+    border-radius: 10px;
+    padding: 16px 20px 20px;
+    position: relative;
+  }
+  .layer + .layer { margin-top: 0; }
+
+  .layer-label {
+    position: absolute;
+    top: -13px;
+    left: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 2px 10px;
+    border-radius: 4px;
+  }
+
+  /* Layer color themes */
+  .layer-user    { border-color: #444c56; background: #161b22; }
+  .layer-user    .layer-label { background: #444c56; color: #e6edf3; }
+
+  .layer-frontend { border-color: #1f4068; background: #0d1b2e; }
+  .layer-frontend .layer-label { background: #1f4068; color: #79c0ff; }
+
+  .layer-backend  { border-color: #1a3a2a; background: #0d1e17; }
+  .layer-backend  .layer-label { background: #1a3a2a; color: #56d364; }
+
+  .layer-ai       { border-color: #3d2800; background: #1c1200; }
+  .layer-ai       .layer-label { background: #3d2800; color: #e3b341; }
+
+  .layer-data     { border-color: #2d1f4e; background: #120d22; }
+  .layer-data     .layer-label { background: #2d1f4e; color: #bc8cff; }
+
+  /* ─── Arrow connector between layers ───────────────────── */
+  .connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 4px 0;
+    position: relative;
+    z-index: 2;
+  }
+  .connector-line {
+    width: 2px;
+    height: 18px;
+    background: #30363d;
+  }
+  .connector-label {
+    font-size: 10px;
+    color: #8b949e;
+    background: #0d1117;
+    padding: 1px 8px;
+    border: 1px solid #30363d;
+    border-radius: 20px;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
+  .connector-arrow {
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid #30363d;
+  }
+
+  /* ─── Inner Row Layout ──────────────────────────────────── */
+  .row {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .row-center { justify-content: center; }
+
+  /* ─── Box (generic card) ────────────────────────────────── */
+  .box {
+    border: 1.5px solid;
+    border-radius: 8px;
+    padding: 12px 14px;
+    flex: 1;
+    min-width: 140px;
+  }
+  .box-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .box-title .icon { font-size: 14px; }
+  .box ul {
+    list-style: none;
+    padding: 0;
+  }
+  .box ul li {
+    font-size: 11px;
+    color: #8b949e;
+    padding: 2px 0;
+    padding-left: 12px;
+    position: relative;
+  }
+  .box ul li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: #444c56;
+  }
+
+  /* ─── Box color variants ───────────────────────────────── */
+  .box-blue  { border-color: #1f4068; background: #0d1b2e; }
+  .box-blue  .box-title { color: #79c0ff; }
+
+  .box-green { border-color: #1a3a2a; background: #0d1e17; }
+  .box-green .box-title { color: #56d364; }
+  .box-green-highlight { border-color: #238636; background: #0f2d1a; box-shadow: 0 0 0 1px #238636; }
+  .box-green-highlight .box-title { color: #3fb950; }
+
+  .box-orange { border-color: #3d2800; background: #1c1200; }
+  .box-orange .box-title { color: #e3b341; }
+
+  .box-purple { border-color: #4b2b7a; background: #1a0d2e; }
+  .box-purple .box-title { color: #bc8cff; }
+  .box-purple-highlight { border-color: #7c4dbb; background: #1f1038; box-shadow: 0 0 0 1px #7c4dbb; }
+  .box-purple-highlight .box-title { color: #d2a8ff; }
+
+  .box-gray  { border-color: #30363d; background: #161b22; }
+  .box-gray  .box-title { color: #8b949e; }
+
+  .box-red-highlight { border-color: #da3633; background: #1a0a0a; box-shadow: 0 0 0 1px #da3633; }
+  .box-red-highlight .box-title { color: #ff7b72; }
+
+  /* ─── Users row ─────────────────────────────────────────── */
+  .user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #21262d;
+    border: 1.5px solid #30363d;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #e6edf3;
+  }
+  .user-pill .role-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    text-transform: uppercase;
+  }
+  .badge-eng  { background: #1f4068; color: #79c0ff; }
+  .badge-ana  { background: #1a3a2a; color: #56d364; }
+  .badge-biz  { background: #3d2800; color: #e3b341; }
+  .badge-adm  { background: #4b2b7a; color: #bc8cff; }
+
+  /* ─── API endpoints strip ────────────────────────────────── */
+  .api-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .api-endpoint {
+    font-size: 11px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    background: #0d1117;
+    border: 1px solid #238636;
+    color: #3fb950;
+    padding: 3px 10px;
+    border-radius: 4px;
+  }
+
+  /* ─── Note/Label tag ─────────────────────────────────────── */
+  .note {
+    font-size: 10px;
+    color: #8b949e;
+    margin-top: 8px;
+    padding: 4px 10px;
+    background: #21262d;
+    border-left: 3px solid #444c56;
+    border-radius: 0 4px 4px 0;
+    font-style: italic;
+  }
+  .note-blue  { border-left-color: #58a6ff; }
+  .note-green { border-left-color: #56d364; }
+  .note-orange{ border-left-color: #e3b341; }
+  .note-purple{ border-left-color: #bc8cff; }
+
+  /* ─── Sub-group inside layer ─────────────────────────────── */
+  .sub-group {
+    border: 1px dashed #30363d;
+    border-radius: 8px;
+    padding: 10px 12px;
+    flex: 1;
+    min-width: 200px;
+  }
+  .sub-group-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #30363d;
+  }
+  .sub-group-purple .sub-group-title { color: #bc8cff; border-bottom-color: #4b2b7a; }
+  .sub-group-gray   .sub-group-title { color: #8b949e; border-bottom-color: #30363d; }
+  .sub-group-green  .sub-group-title { color: #56d364; border-bottom-color: #1a3a2a; }
+
+  /* ─── Flows Section ─────────────────────────────────────── */
+  .flows-section {
+    max-width: 1280px;
+    margin: 32px auto 0;
+  }
+  .flows-section h2 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #8b949e;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #21262d;
+  }
+  .flows-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+  }
+  .flow-card {
+    border: 1.5px solid #30363d;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #161b22;
+  }
+  .flow-card h3 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .flow-badge {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .flow-1 h3 { color: #58a6ff; } .flow-1 { border-color: #1f4068; } .flow-1 .flow-badge { background: #1f4068; color: #79c0ff; }
+  .flow-2 h3 { color: #e3b341; } .flow-2 { border-color: #3d2800; } .flow-2 .flow-badge { background: #3d2800; color: #e3b341; }
+  .flow-3 h3 { color: #bc8cff; } .flow-3 { border-color: #4b2b7a; } .flow-3 .flow-badge { background: #4b2b7a; color: #d2a8ff; }
+
+  .flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #8b949e;
+  }
+  .flow-step-num {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .flow-1 .flow-step-num { background: #1f4068; color: #79c0ff; }
+  .flow-2 .flow-step-num { background: #3d2800; color: #e3b341; }
+  .flow-3 .flow-step-num { background: #4b2b7a; color: #d2a8ff; }
+  .flow-arrow { color: #444c56; font-size: 10px; }
+  .step-label {
+    background: #21262d;
+    border: 1px solid #30363d;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    color: #c9d1d9;
+  }
+
+  /* ─── Legend ─────────────────────────────────────────────── */
+  .legend {
+    max-width: 1280px;
+    margin: 24px auto 0;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .legend-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #444c56;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #8b949e;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     PAGE HEADER
+════════════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <h1><span>π-Skills Platform</span> — Enterprise AI Governance Architecture</h1>
+  <p>Production-Grade System Architecture · Snowflake-Native RBAC · Token-Controlled AI Execution</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     DIAGRAM
+════════════════════════════════════════════════════════════ -->
+<div class="diagram">
+
+  <!-- ── LAYER 1: USER ──────────────────────────────────────── -->
+  <div class="layer layer-user">
+    <span class="layer-label">Layer 1 · Users</span>
+    <div class="row row-center" style="margin-top:18px; gap:12px; flex-wrap:wrap; justify-content:center;">
+      <div class="user-pill">
+        <span>👷</span> Data Engineer
+        <span class="role-badge badge-eng">ENGINEER</span>
+      </div>
+      <div class="user-pill">
+        <span>📊</span> Analyst
+        <span class="role-badge badge-ana">ANALYST</span>
+      </div>
+      <div class="user-pill">
+        <span>💼</span> Business User
+        <span class="role-badge badge-biz">LIMITED</span>
+      </div>
+      <div class="user-pill">
+        <span>🔐</span> Admin
+        <span class="role-badge badge-adm">FULL CONTROL</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- connector -->
+  <div class="connector">
+    <div class="connector-line"></div>
+    <div class="connector-label">Browser Request</div>
+    <div class="connector-arrow"></div>
+  </div>
+
+  <!-- ── LAYER 2: FRONTEND ──────────────────────────────────── -->
+  <div class="layer layer-frontend">
+    <span class="layer-label">Layer 2 · Frontend — React + TypeScript</span>
+    <div class="note note-blue" style="margin-top:14px;">UI dynamically adapts based on Snowflake roles — components are hidden (not disabled) for unauthorized users</div>
+    <div class="row" style="margin-top:12px;">
+
+      <div class="box box-blue" style="flex:0 0 180px;">
+        <div class="box-title"><span class="icon">🖥️</span> Web App</div>
+        <ul>
+          <li>React + TypeScript</li>
+          <li>Vite build</li>
+          <li>Zustand state</li>
+          <li>React Query</li>
+          <li>Strict no-any types</li>
+        </ul>
+      </div>
+
+      <div class="box box-blue" style="flex:0 0 160px;">
+        <div class="box-title"><span class="icon">📐</span> Sidebar</div>
+        <ul>
+          <li>Role-based nav</li>
+          <li>240px fixed width</li>
+          <li>Dynamic visibility</li>
+          <li>Snowflake role sync</li>
+        </ul>
+      </div>
+
+      <div class="box box-blue" style="flex:1;">
+        <div class="box-title"><span class="icon">📄</span> Pages</div>
+        <div class="row" style="gap:8px; margin-top:0; flex-wrap:wrap;">
+          <div style="font-size:10px; background:#0d1117; border:1px solid #1f4068; border-radius:4px; padding:4px 8px; color:#79c0ff;">📊 Dashboard</div>
+          <div style="font-size:10px; background:#0d1117; border:1px solid #1f4068; border-radius:4px; padding:4px 8px; color:#79c0ff;">🛒 Skill Marketplace</div>
+          <div style="font-size:10px; background:#0d1117; border:1px solid #1f4068; border-radius:4px; padding:4px 8px; color:#79c0ff;">⚡ Model Execution</div>
+          <div style="font-size:10px; background:#0d1117; border:1px solid #1f4068; border-radius:4px; padding:4px 8px; color:#79c0ff;">⚙️ Admin Panel</div>
+          <div style="font-size:10px; background:#0d1117; border:1px solid #1f4068; border-radius:4px; padding:4px 8px; color:#79c0ff;">🔑 Request Access</div>
+        </div>
+        <ul style="margin-top:8px;">
+          <li>No logic in pages — hooks only</li>
+          <li>No direct API calls in components</li>
+          <li>Loading / empty / error states always present</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- connector -->
+  <div class="connector">
+    <div class="connector-line"></div>
+    <div class="connector-label">API Calls (JWT)</div>
+    <div class="connector-arrow"></div>
+  </div>
+
+  <!-- ── LAYER 3: BACKEND ───────────────────────────────────── -->
+  <div class="layer layer-backend">
+    <span class="layer-label">Layer 3 · Backend API — FastAPI (async)</span>
+    <div class="row">
+
+      <div class="box box-green-highlight" style="flex:0 0 175px;">
+        <div class="box-title"><span class="icon">🔒</span> Auth Service</div>
+        <ul>
+          <li>Snowflake Authentication</li>
+          <li>SHOW GRANTS → fetch roles</li>
+          <li>JWT token issuance</li>
+          <li>Session lifecycle</li>
+        </ul>
+      </div>
+
+      <div class="box box-red-highlight" style="flex:0 0 175px;">
+        <div class="box-title"><span class="icon">🛡️</span> Permission Service</div>
+        <ul>
+          <li>Snowflake-roles-only RBAC</li>
+          <li>Model access validation</li>
+          <li>Feature flag enforcement</li>
+          <li>Every request checked first</li>
+        </ul>
+      </div>
+
+      <div class="box box-red-highlight" style="flex:0 0 175px;">
+        <div class="box-title"><span class="icon">🪙</span> Token Service</div>
+        <ul>
+          <li>Pre-execution validation</li>
+          <li>Cost calculation</li>
+          <li>Usage tracking</li>
+          <li>Quota enforcement</li>
+        </ul>
+      </div>
+
+      <div class="box box-green" style="flex:0 0 160px;">
+        <div class="box-title"><span class="icon">📬</span> Request Service</div>
+        <ul>
+          <li>Access request handling</li>
+          <li>Approval workflow</li>
+          <li>Admin notification</li>
+          <li>Status tracking</li>
+        </ul>
+      </div>
+
+      <div class="box box-green" style="flex:1;">
+        <div class="box-title"><span class="icon">🌐</span> API Layer</div>
+        <div class="api-strip">
+          <span class="api-endpoint">POST /auth</span>
+          <span class="api-endpoint">GET /models</span>
+          <span class="api-endpoint">POST /execute</span>
+          <span class="api-endpoint">GET /admin</span>
+          <span class="api-endpoint">POST /requests</span>
+        </div>
+        <ul style="margin-top:8px;">
+          <li>Auth + permission check always first</li>
+          <li>Response models mandatory</li>
+          <li>Async DB only</li>
+          <li>Stateless service layer</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- connector: Backend → Snowflake (side) + Backend → AI (down) -->
+  <div class="connector">
+    <div class="connector-line"></div>
+    <div class="connector-label">Validated Execution Request</div>
+    <div class="connector-arrow"></div>
+  </div>
+
+  <!-- ── LAYER 4: AI EXECUTION ──────────────────────────────── -->
+  <div class="layer layer-ai">
+    <span class="layer-label">Layer 4 · AI Execution</span>
+    <div class="note note-orange" style="margin-top:14px;">Execution only after token validation + permission check — no direct model access from frontend</div>
+    <div class="row" style="margin-top:12px;">
+
+      <div class="box box-orange" style="flex:0 0 230px;">
+        <div class="box-title"><span class="icon">🌉</span> MCP Bridge (HTTP)</div>
+        <ul>
+          <li>Secure execution layer</li>
+          <li>Session management</li>
+          <li>SQL validation before execution</li>
+          <li>Sanitized error responses</li>
+          <li>Encrypted sessions</li>
+          <li>Request/response logging</li>
+        </ul>
+      </div>
+
+      <div style="flex:1; display:flex; flex-direction:column; gap:10px;">
+        <div class="row" style="margin-top:0; gap:10px;">
+
+          <div class="box box-orange" style="flex:1;">
+            <div class="box-title"><span class="icon">🤖</span> OpenAI (GPT)</div>
+            <ul>
+              <li>GPT-4 / GPT-4o</li>
+              <li>Role-gated access</li>
+              <li>Token counted per call</li>
+              <li>Cost logged to DB</li>
+            </ul>
+          </div>
+
+          <div class="box box-orange" style="flex:1;">
+            <div class="box-title"><span class="icon">🧠</span> Anthropic (Claude)</div>
+            <ul>
+              <li>Haiku / Sonnet / Opus</li>
+              <li>Model routing by task</li>
+              <li>Token counted per call</li>
+              <li>Cost logged to DB</li>
+            </ul>
+          </div>
+
+        </div>
+        <div class="note note-orange" style="margin-top:0;">← Response + token counts returned to Backend → written to AI_TOKEN_USAGE_LOG</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- connector -->
+  <div class="connector">
+    <div class="connector-line"></div>
+    <div class="connector-label">Role Validation · Data Access · Audit Writes</div>
+    <div class="connector-arrow"></div>
+  </div>
+
+  <!-- ── LAYER 5: DATA & GOVERNANCE ────────────────────────── -->
+  <div class="layer layer-data">
+    <span class="layer-label">Layer 5 · Data &amp; Governance</span>
+    <div class="row" style="margin-top:14px; align-items:stretch;">
+
+      <!-- Snowflake -->
+      <div class="sub-group sub-group-purple" style="flex:2; min-width:320px;">
+        <div class="sub-group-title sub-group-purple">Snowflake — Primary Governance Authority</div>
+        <div class="note note-purple" style="margin-bottom:10px;">Source of truth for all roles, permissions, and data governance</div>
+        <div class="row" style="margin-top:0; gap:8px;">
+          <div class="box box-purple-highlight" style="flex:0 0 140px;">
+            <div class="box-title" style="font-size:11px;"><span class="icon">👤</span> Roles &amp; Users</div>
+            <ul>
+              <li>ENGINEER</li>
+              <li>ANALYST</li>
+              <li>SCIENTIST</li>
+              <li>BUSINESS_USER</li>
+              <li>ORG_ADMIN</li>
+              <li>SECURITY_ADMIN</li>
+            </ul>
+          </div>
+          <div class="box box-purple" style="flex:0 0 150px;">
+            <div class="box-title" style="font-size:11px;"><span class="icon">🗄️</span> Databases</div>
+            <ul>
+              <li>RAW_DB</li>
+              <li>STAGING_DB</li>
+              <li>CURATED_DB</li>
+              <li>GOVERNANCE_DB</li>
+            </ul>
+          </div>
+          <div class="box box-purple" style="flex:1;">
+            <div class="box-title" style="font-size:11px;"><span class="icon">📋</span> Governance Tables</div>
+            <ul>
+              <li>AI_MODEL_ACCESS_CONTROL</li>
+              <li>AI_FEATURE_FLAGS</li>
+              <li>RBAC_AUDIT_LOG</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- PostgreSQL -->
+      <div class="sub-group sub-group-gray" style="flex:1.2; min-width:200px;">
+        <div class="sub-group-title sub-group-gray">PostgreSQL — Application Database</div>
+        <div class="box box-gray" style="margin-top:0;">
+          <div class="box-title" style="font-size:11px;"><span class="icon">🐘</span> App Tables</div>
+          <ul>
+            <li>AI_USER_MAPPING</li>
+            <li>AI_SUBSCRIPTIONS</li>
+            <li>AI_USER_TOKENS</li>
+            <li>AI_TOKEN_USAGE_LOG</li>
+            <li>ACCESS_REQUESTS</li>
+          </ul>
+        </div>
+        <div class="note" style="margin-top:8px;">Alembic migrations only · indexed queries</div>
+      </div>
+
+      <!-- Redis -->
+      <div class="sub-group sub-group-green" style="flex:0.8; min-width:160px;">
+        <div class="sub-group-title sub-group-green">Redis — Cache Layer</div>
+        <div class="box box-green" style="margin-top:0;">
+          <div class="box-title" style="font-size:11px;"><span class="icon">⚡</span> Caches</div>
+          <ul>
+            <li>Role Cache</li>
+            <li>Rate Limiting</li>
+            <li>Session Cache</li>
+            <li>Token quotas</li>
+          </ul>
+        </div>
+        <div class="note note-green" style="margin-top:8px;">Cache-first · batch aggressively</div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- end .diagram -->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     KEY FLOWS
+════════════════════════════════════════════════════════════ -->
+<div class="flows-section">
+  <h2>Key Request Flows</h2>
+  <div class="flows-grid">
+
+    <!-- Flow 1: Auth -->
+    <div class="flow-card flow-1">
+      <h3><span class="flow-badge">Flow 1</span> Authentication</h3>
+      <div class="flow-steps">
+        <div class="flow-step"><div class="flow-step-num">1</div><span class="step-label">User → Frontend</span><span class="flow-arrow">›</span> Submit credentials</div>
+        <div class="flow-step"><div class="flow-step-num">2</div><span class="step-label">Frontend → Backend /auth</span><span class="flow-arrow">›</span> POST login</div>
+        <div class="flow-step"><div class="flow-step-num">3</div><span class="step-label">Backend → Snowflake</span><span class="flow-arrow">›</span> SHOW GRANTS (fetch roles)</div>
+        <div class="flow-step"><div class="flow-step-num">4</div><span class="step-label">Redis</span><span class="flow-arrow">›</span> Cache role set (TTL)</div>
+        <div class="flow-step"><div class="flow-step-num">5</div><span class="step-label">Backend → Frontend</span><span class="flow-arrow">›</span> JWT + role payload</div>
+        <div class="flow-step"><div class="flow-step-num">6</div><span class="step-label">Frontend</span><span class="flow-arrow">›</span> UI adapts dynamically to roles</div>
+      </div>
+    </div>
+
+    <!-- Flow 2: Model Execution -->
+    <div class="flow-card flow-2">
+      <h3><span class="flow-badge">Flow 2</span> AI Model Execution</h3>
+      <div class="flow-steps">
+        <div class="flow-step"><div class="flow-step-num">1</div><span class="step-label">User → Frontend</span><span class="flow-arrow">›</span> Trigger skill execution</div>
+        <div class="flow-step"><div class="flow-step-num">2</div><span class="step-label">Backend /execute</span><span class="flow-arrow">›</span> Auth + JWT check</div>
+        <div class="flow-step"><div class="flow-step-num">3</div><span class="step-label">Permission Service</span><span class="flow-arrow">›</span> Validate Snowflake role</div>
+        <div class="flow-step"><div class="flow-step-num">4</div><span class="step-label">Token Service</span><span class="flow-arrow">›</span> Quota check + cost estimate</div>
+        <div class="flow-step"><div class="flow-step-num">5</div><span class="step-label">MCP Bridge → AI Model</span><span class="flow-arrow">›</span> Execute with session</div>
+        <div class="flow-step"><div class="flow-step-num">6</div><span class="step-label">Response → Backend</span><span class="flow-arrow">›</span> Tokens counted</div>
+        <div class="flow-step"><div class="flow-step-num">7</div><span class="step-label">DB + Snowflake</span><span class="flow-arrow">›</span> Write usage + audit log</div>
+      </div>
+    </div>
+
+    <!-- Flow 3: Access Request -->
+    <div class="flow-card flow-3">
+      <h3><span class="flow-badge">Flow 3</span> Access Request</h3>
+      <div class="flow-steps">
+        <div class="flow-step"><div class="flow-step-num">1</div><span class="step-label">User → Request Access Page</span><span class="flow-arrow">›</span> Submit form</div>
+        <div class="flow-step"><div class="flow-step-num">2</div><span class="step-label">Backend /requests</span><span class="flow-arrow">›</span> Write to ACCESS_REQUESTS</div>
+        <div class="flow-step"><div class="flow-step-num">3</div><span class="step-label">Admin → Admin Panel</span><span class="flow-arrow">›</span> Review request</div>
+        <div class="flow-step"><div class="flow-step-num">4</div><span class="step-label">Admin approves</span><span class="flow-arrow">›</span> Backend processes approval</div>
+        <div class="flow-step"><div class="flow-step-num">5</div><span class="step-label">Snowflake</span><span class="flow-arrow">›</span> Update AI_MODEL_ACCESS_CONTROL</div>
+        <div class="flow-step"><div class="flow-step-num">6</div><span class="step-label">Redis</span><span class="flow-arrow">›</span> Invalidate role cache</div>
+        <div class="flow-step"><div class="flow-step-num">7</div><span class="step-label">RBAC_AUDIT_LOG</span><span class="flow-arrow">›</span> Write governance record</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     LEGEND
+════════════════════════════════════════════════════════════ -->
+<div class="legend">
+  <span class="legend-title">Legend</span>
+  <div class="legend-item"><div class="legend-dot" style="background:#1f4068;"></div> Frontend (Blue)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#1a3a2a;"></div> Backend (Green)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3d2800;"></div> AI Execution (Orange)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#4b2b7a;"></div> Snowflake (Purple)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#30363d;"></div> Database/Cache (Gray)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#da3633;"></div> Critical Enforcement</div>
+</div>
+
+</body>
+</html>

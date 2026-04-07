@@ -1,0 +1,235 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Token/Cost Enforcement Bypass
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate requests execute without validation and usage is not tracked
+  - **Scoped PBT Approach**: Test concrete failing cases across multiple bug scenarios
+  - Test that requests execute without token limit validation (user at 9,500/10,000 tokens submits 1,000 token request → should block but doesn't)
+  - Test that requests execute without cost limit validation (user at $48/$50 budget submits $5 request → should block but doesn't)
+  - Test that requests execute without per-request limit validation (user submits 4096 token request on 2048 limit plan → should block but doesn't)
+  - Test that requests execute without model access validation (user on "basic" plan requests "gpt-4" → should block but doesn't)
+  - Test that AI_USER_TOKENS is not updated after execution (tokens_used and cost_accumulated remain unchanged)
+  - Test that AI_TOKEN_USAGE_LOG has no records after execution
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found to understand root cause
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.9, 1.10, 1.11, 1.13, 1.14, 1.15_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Existing Validation and Execution Flow
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for valid requests (within limits, valid model access)
+  - Observe that existing security checks work (prompt injection blocked, rate limiting works, model registration checked)
+  - Observe that valid requests execute successfully and return model responses
+  - Observe that audit logging to audit_log table works
+  - Write property-based tests capturing observed behavior patterns:
+    - For all users within token/cost limits with valid model access, requests execute successfully
+    - For all requests with prompt injection patterns, requests are blocked with "PROMPT_POLICY_VIOLATION"
+    - For all users exceeding rate limits, requests are blocked with "RATE_LIMITED"
+    - For all requests to unregistered models, requests are blocked with "DENIED_MODEL_UNKNOWN"
+    - For all requests to skills without access, requests are blocked with "DENIED_SKILL"
+    - For all requests to models without permission, requests are blocked with "DENIED_MODEL"
+    - For all valid requests, audit_log table has entries
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10_
+
+- [-] 3. Implement token cost enforcement fix
+
+  - [x] 3.1 Enhance ModelResult dataclass to capture input/output tokens separately
+    - Open `apps/api/models/domain.py`
+    - Add `input_tokens: int = 0` field to ModelResult
+    - Add `output_tokens: int = 0` field to ModelResult
+    - Keep existing `tokens_used` field for backward compatibility (will be sum of input + output)
+    - _Bug_Condition: isBugCondition(request) where token tracking is incomplete_
+    - _Expected_Behavior: ModelResult captures input_tokens and output_tokens separately for accurate cost calculation_
+    - _Preservation: Existing ModelResult fields and usage remain unchanged_
+    - _Requirements: 2.7_
+
+  - [x] 3.2 Update model adapters to populate input/output tokens
+    - Open `apps/api/adapters/model_adapter.py`
+    - Update AnthropicAdapter: Set `input_tokens = response.usage.input_tokens`, `output_tokens = response.usage.output_tokens`
+    - Update LiteLLMAdapter: Set `input_tokens = response.usage.prompt_tokens`, `output_tokens = response.usage.completion_tokens`
+    - Update GeminiAdapter: Parse from `response.usage_metadata` if available
+    - Update MockModelAdapter: Return mock values for testing (e.g., input_tokens=100, output_tokens=50)
+    - _Bug_Condition: isBugCondition(request) where actual token usage is not captured_
+    - _Expected_Behavior: All adapters populate input_tokens and output_tokens in ModelResult_
+    - _Preservation: Existing adapter behavior and response handling remain unchanged_
+    - _Requirements: 2.7_
+
+  - [x] 3.3 Add Snowflake client integration to ExecutionGuard
+    - Open `apps/api/services/execution_guard.py`
+    - Add `snowflake_client` parameter to `__init__` method
+    - Store as `self.sf_client` instance variable
+    - Add type hint: `snowflake_client: SnowflakeService`
+    - _Bug_Condition: isBugCondition(request) where ExecutionGuard cannot query AI_* tables in Snowflake_
+    - _Expected_Behavior: ExecutionGuard has access to Snowflake client for querying token/cost data_
+    - _Preservation: Existing ExecutionGuard initialization and dependencies remain unchanged_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.9, 2.10, 2.11_
+
+  - [x] 3.4 Add token estimation function
+    - In `apps/api/services/execution_guard.py`, add method `_estimate_tokens(self, prompt: str, max_tokens: int) -> int`
+    - Implement simple word-based estimation: `input_tokens = len(prompt.split()) * 1.3`
+    - Add max_tokens for output estimation: `total_tokens = input_tokens + max_tokens`
+    - Return total estimated tokens as integer
+    - Add docstring explaining estimation approach
+    - _Bug_Condition: isBugCondition(request) where token estimation is inconsistent or missing_
+    - _Expected_Behavior: Standardized token estimation using input_tokens * 1.3 + max_tokens_
+    - _Preservation: No existing functionality affected (new method)_
+    - _Requirements: 2.6_
+
+  - [x] 3.5 Add cost calculation function
+    - In `apps/api/services/execution_guard.py`, add method `_calculate_cost(self, input_tokens: int, output_tokens: int, model_id: str) -> float`
+    - Query AI_MODEL_REGISTRY via Snowflake client to get model pricing (input_cost_per_1k, output_cost_per_1k)
+    - Calculate: `cost = (input_tokens/1000 * input_cost_per_1k) + (output_tokens/1000 * output_cost_per_1k)`
+    - Return total cost as float
+    - Handle missing pricing data gracefully (log warning, return 0.0)
+    - Add docstring explaining cost calculation formula
+    - _Bug_Condition: isBugCondition(request) where cost calculation is unreliable or missing_
+    - _Expected_Behavior: Cost calculated using (input_tokens/1000 * input_cost_per_1k) + (output_tokens/1000 * output_cost_per_1k)_
+    - _Preservation: No existing functionality affected (new method)_
+    - _Requirements: 2.8_
+
+  - [x] 3.6 Add subscription plan lookup function
+    - In `apps/api/services/execution_guard.py`, add method `_get_user_subscription(self, user_id: str) -> dict`
+    - Query AI_USER_MAPPING via Snowflake client to get plan_name for user
+    - Query AI_SUBSCRIPTIONS via Snowflake client to get plan details (monthly_token_limit, max_tokens_per_request, allowed_models, cost_budget_monthly)
+    - Cache result in Redis for performance (key: f"subscription:{user_id}", TTL: 300 seconds)
+    - Return subscription plan dict with all fields
+    - Handle missing user/plan gracefully (return default "free" plan or raise error)
+    - Add docstring explaining caching strategy
+    - _Bug_Condition: isBugCondition(request) where subscription plan limits are not enforced_
+    - _Expected_Behavior: User subscription plan retrieved with monthly_token_limit, max_tokens_per_request, allowed_models, cost_budget_monthly_
+    - _Preservation: No existing functionality affected (new method)_
+    - _Requirements: 2.3, 2.4_
+
+  - [x] 3.7 Add current usage lookup function
+    - In `apps/api/services/execution_guard.py`, add method `_get_current_usage(self, user_id: str, period: str) -> dict`
+    - Query AI_USER_TOKENS via Snowflake client for current period (format: "YYYY-MM")
+    - Return dict with {tokens_used, cost_accumulated, tokens_limit}
+    - If no record exists for current period, initialize with zeros: {tokens_used: 0, cost_accumulated: 0.0}
+    - Add docstring explaining period format and initialization
+    - _Bug_Condition: isBugCondition(request) where current usage is not checked before execution_
+    - _Expected_Behavior: Current usage retrieved from AI_USER_TOKENS for validation_
+    - _Preservation: No existing functionality affected (new method)_
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.8 Add pre-execution validation gates
+    - In `apps/api/services/execution_guard.py`, in `execute()` method, BEFORE model invocation
+    - Call `_estimate_tokens(prompt, max_tokens)` to get estimated_tokens
+    - Call `_get_user_subscription(user_id)` to get plan limits
+    - Call `_get_current_usage(user_id, current_period)` to get current usage
+    - Validate token limit: `if current_usage['tokens_used'] + estimated_tokens > plan['monthly_token_limit']: raise GuardDenied("Monthly token limit exceeded")`
+    - Validate per-request limit: `if estimated_tokens > plan['max_tokens_per_request']: raise GuardDenied("Per-request token limit exceeded")`
+    - Validate model access: `if model_id not in plan['allowed_models']: raise GuardDenied("Model not available in your subscription plan")`
+    - Estimate cost using `_calculate_cost(estimated_input_tokens, estimated_output_tokens, model_id)`
+    - Validate cost limit: `if current_usage['cost_accumulated'] + estimated_cost > plan['cost_budget_monthly']: raise GuardDenied("Monthly cost limit exceeded")`
+    - Add logging for each validation check (debug level)
+    - _Bug_Condition: isBugCondition(request) where requests execute without token/cost validation_
+    - _Expected_Behavior: All requests validated against token limits, cost limits, per-request limits, and model access before execution_
+    - _Preservation: Existing validation gates (model registration, skill access, rate limiting) remain unchanged and execute in same order_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.13, 2.14, 2.15, 2.16_
+
+  - [x] 3.9 Add post-execution usage update
+    - In `apps/api/services/execution_guard.py`, in `execute()` method, AFTER model invocation returns ModelResult
+    - Extract `input_tokens` and `output_tokens` from ModelResult
+    - Calculate total_tokens: `total_tokens = input_tokens + output_tokens`
+    - Call `_calculate_cost(input_tokens, output_tokens, model_id)` to get actual cost
+    - Update AI_USER_TOKENS via Snowflake client: `UPDATE AI_USER_TOKENS SET tokens_used = tokens_used + total_tokens, cost_accumulated = cost_accumulated + cost WHERE user_id = ? AND period = ?`
+    - If no record exists for current period, INSERT new record: `INSERT INTO AI_USER_TOKENS (user_id, period, tokens_used, cost_accumulated, tokens_limit) VALUES (?, ?, ?, ?, ?)`
+    - Use upsert pattern (INSERT ... ON CONFLICT UPDATE) if Snowflake supports it
+    - Add error handling: log warning if update fails but don't block response
+    - _Bug_Condition: isBugCondition(request) where AI_USER_TOKENS is not updated after execution_
+    - _Expected_Behavior: AI_USER_TOKENS updated with actual token usage and cost after every request_
+    - _Preservation: Existing execution flow and response handling remain unchanged_
+    - _Requirements: 2.9, 2.10_
+
+  - [x] 3.10 Add usage logging to AI_TOKEN_USAGE_LOG
+    - In `apps/api/services/execution_guard.py`, in `execute()` method, AFTER usage update
+    - Generate log_id using UUID: `log_id = str(uuid.uuid4())`
+    - Insert into AI_TOKEN_USAGE_LOG via Snowflake client with all fields:
+      - log_id, user_id, model_id, skill_id, request_id
+      - input_tokens, output_tokens, total_tokens, cost
+      - outcome ("SUCCESS" or "FAILED"), latency_ms, timestamp
+    - Use try/except to ensure logging doesn't break execution flow
+    - If insert fails, log error but continue (don't raise exception)
+    - Add debug logging: "Logged usage to AI_TOKEN_USAGE_LOG: {log_id}"
+    - _Bug_Condition: isBugCondition(request) where AI_TOKEN_USAGE_LOG entries are not guaranteed_
+    - _Expected_Behavior: Every request logged to AI_TOKEN_USAGE_LOG with full details_
+    - _Preservation: Existing audit logging to audit_log table remains unchanged_
+    - _Requirements: 2.11_
+
+  - [x] 3.11 Handle failures gracefully
+    - In `apps/api/services/execution_guard.py`, in `execute()` method, wrap model invocation in try/except
+    - If invocation fails (exception raised), catch exception
+    - Still log to AI_TOKEN_USAGE_LOG with outcome="FAILED"
+    - If partial tokens were consumed (timeout), estimate and log them
+    - Re-raise the exception after logging (preserve error handling)
+    - Add test case for failure scenario
+    - _Bug_Condition: isBugCondition(request) where failed requests are not tracked_
+    - _Expected_Behavior: Failed requests still logged with outcome="FAILED" and estimated token usage_
+    - _Preservation: Existing error handling and exception propagation remain unchanged_
+    - _Requirements: 2.12_
+
+  - [x] 3.12 Inject Snowflake client into ExecutionGuard in routers
+    - Open `apps/api/routers/execute.py`
+    - Import SnowflakeService: `from apps.api.services.snowflake_service import SnowflakeService`
+    - Create or inject Snowflake client instance
+    - Pass Snowflake client to ExecutionGuard constructor: `guard = ExecutionGuard(..., snowflake_client=sf_client)`
+    - Update all ExecutionGuard instantiations in the file
+    - _Bug_Condition: isBugCondition(request) where ExecutionGuard cannot access Snowflake_
+    - _Expected_Behavior: ExecutionGuard receives Snowflake client for querying AI_* tables_
+    - _Preservation: Existing router behavior and dependency injection remain unchanged_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.9, 2.10, 2.11_
+
+  - [x] 3.13 Add Snowflake connection settings to config
+    - Open `apps/api/core/config.py`
+    - Check if Snowflake settings already exist (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE, SNOWFLAKE_SCHEMA)
+    - If missing, add settings with environment variable bindings
+    - Add validation to ensure Snowflake settings are provided
+    - Update .env.example with Snowflake settings
+    - _Bug_Condition: isBugCondition(request) where Snowflake connection is not configured_
+    - _Expected_Behavior: Snowflake connection settings available in config_
+    - _Preservation: Existing config structure and settings remain unchanged_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.9, 2.10, 2.11_
+
+  - [-] 3.14 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Token/Cost Enforcement Working
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - Verify that requests over token limit are blocked with "Monthly token limit exceeded"
+    - Verify that requests over cost limit are blocked with "Monthly cost limit exceeded"
+    - Verify that requests over per-request limit are blocked with "Per-request token limit exceeded"
+    - Verify that requests for models not in plan are blocked with "Model not available in your subscription plan"
+    - Verify that AI_USER_TOKENS is updated after execution (tokens_used and cost_accumulated incremented)
+    - Verify that AI_TOKEN_USAGE_LOG has records after execution
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.9, 2.10, 2.11, 2.13, 2.14, 2.15_
+
+  - [~] 3.15 Verify preservation tests still pass
+    - **Property 2: Preservation** - Existing Validation and Execution Flow Unchanged
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Verify that valid requests (within limits) still execute successfully
+    - Verify that existing security checks still work (prompt injection, rate limiting, model registration, skill access, model permission)
+    - Verify that audit logging to audit_log table still works
+    - Confirm all tests still pass after fix (no regressions)
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10_
+
+- [~] 4. Checkpoint - Ensure all tests pass
+  - Run all unit tests: `pytest apps/api/tests/`
+  - Run all property-based tests
+  - Run integration tests with Snowflake (or mock Snowflake client)
+  - Verify no regressions in existing functionality
+  - Verify all new validation gates work correctly
+  - Verify usage tracking and logging work reliably
+  - Ask the user if questions arise or if any tests fail

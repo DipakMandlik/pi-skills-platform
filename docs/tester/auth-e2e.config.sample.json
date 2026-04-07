@@ -1,0 +1,14 @@
+{
+  "backend": {
+    "baseUrl": "http://localhost:8000",
+    "adminEmail": "admin@platform.local",
+    "adminPassword": "admin123"
+  },
+  "mcp": {
+    "baseUrl": "http://localhost:5000",
+    "account": "your-snowflake-account-identifier",
+    "username": "PI_ORG_ADMIN",
+    "password": "your-snowflake-password",
+    "role": "ORG_ADMIN"
+  }
+}

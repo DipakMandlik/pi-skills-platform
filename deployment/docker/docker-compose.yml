@@ -1,0 +1,177 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai-governance-postgres
+    environment:
+      POSTGRES_DB: ai_governance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_prod_2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-governance-net
+    restart: unless-stopped
+
+  # ============================================
+  # Redis Cache
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: ai-governance-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme_prod_2024} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_prod_2024}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-governance-net
+    restart: unless-stopped
+
+  # ============================================
+  # Backend API
+  # ============================================
+  backend:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/api.dockerfile
+    container_name: ai-governance-backend
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-changeme_prod_2024}@postgres:5432/ai_governance
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_prod_2024}@redis:6379/0
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-governance-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================
+  # MCP Bridge (Snowflake)
+  # ============================================
+  mcp:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/mcp.dockerfile
+    container_name: ai-governance-mcp
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
+      SNOWFLAKE_USER: ${SNOWFLAKE_USER}
+      SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
+      SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE:-ACCOUNTADMIN}
+      SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
+      SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
+      SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA}
+      MCP_PORT: ${MCP_PORT:-5001}
+      MCP_LOG_LEVEL: ${MCP_LOG_LEVEL:-INFO}
+      MCP_CORS_ORIGINS: ${MCP_CORS_ORIGINS:-http://localhost:3000}
+      SQL_SAFETY_MODE: ${SQL_SAFETY_MODE:-prod}
+      SQL_DEFAULT_ROW_LIMIT: ${SQL_DEFAULT_ROW_LIMIT:-1000}
+      SQL_MAX_ROWS: ${SQL_MAX_ROWS:-5000}
+      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE:-60}
+    ports:
+      - "${MCP_PORT:-5001}:5001"
+    depends_on:
+      - backend
+    networks:
+      - ai-governance-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ============================================
+  # Frontend (React)
+  # ============================================
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/web.dockerfile
+    container_name: ai-governance-frontend
+    environment:
+      VITE_API_URL: ${API_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    networks:
+      - ai-governance-net
+    restart: unless-stopped
+
+  # ============================================
+  # Nginx Reverse Proxy
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: ai-governance-nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - ai-governance-net
+    restart: unless-stopped
+
+# ============================================
+# Volumes for Data Persistence
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ============================================
+# Network Configuration
+# ============================================
+networks:
+  ai-governance-net:
+    driver: bridge
+
+# ============================================
+# Health Monitoring
+# ============================================
+x-healthcheck: &healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 10s

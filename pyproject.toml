@@ -1,0 +1,60 @@
+# Python Project Configuration
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-governance"
+version = "1.0.0"
+description = "AI Governance Platform with RBAC & Model Governance"
+requires-python = ">=3.12"
+readme = "README.md"
+authors = [{name = "Platform Team", email = "team@platform.local"}]
+
+dependencies = [
+    "fastapi>=0.116.1",
+    "uvicorn[standard]>=0.35.0",
+    "alembic>=1.14.1",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "psycopg[binary]>=3.1.0",
+    "aiosqlite>=0.20.0",
+    "redis[hiredis]>=5.2.1",
+    "pydantic[email]>=2.10.4",
+    "PyJWT>=2.10.1",
+    "passlib[bcrypt]>=1.7.4",
+    "python-dotenv>=1.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.28.0",
+    "ruff>=0.9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["apps"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["apps/api/tests", "apps/mcp/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["apps"]
+omit = ["apps/api/tests/*", "apps/mcp/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__."]

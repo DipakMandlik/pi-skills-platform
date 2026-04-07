@@ -1,0 +1,19 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.claude/settings.local.json
+temp_*.json
+*.db
+# MCP session store (SQLite — never commit)
+apps_mcp_sessions.db
+.pytest_cache/
+.pytest_*/
+pytest-cache-files-*

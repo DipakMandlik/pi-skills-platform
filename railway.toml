@@ -1,0 +1,41 @@
+# Railway deployment configuration
+# Docs: https://docs.railway.com/reference/config-as-code
+#
+# Two services are declared here:
+#   api  — FastAPI governance backend  (apps/api/)
+#   mcp  — Snowflake MCP bridge        (apps/mcp/)
+#
+# Each service has its own Dockerfile so builds are isolated.
+# Environment variables are managed per-service in the Railway dashboard.
+# Deploy hooks (used by .github/workflows/deploy.yml) are generated per-service.
+
+[build]
+  builder = "DOCKERFILE"
+
+# ── API service ───────────────────────────────────────────────────────────────
+[[services]]
+  name = "api"
+
+  [services.build]
+    dockerfilePath = "apps/api/Dockerfile"
+
+  [services.deploy]
+    startCommand = "apps/api/entrypoint.sh"
+    healthcheckPath = "/health"
+    healthcheckTimeout = 30
+    restartPolicyType = "ON_FAILURE"
+    restartPolicyMaxRetries = 3
+
+# ── MCP service ───────────────────────────────────────────────────────────────
+[[services]]
+  name = "mcp"
+
+  [services.build]
+    dockerfilePath = "apps/mcp/Dockerfile"
+
+  [services.deploy]
+    startCommand = "python -m uvicorn apps.mcp.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log"
+    healthcheckPath = "/health"
+    healthcheckTimeout = 30
+    restartPolicyType = "ON_FAILURE"
+    restartPolicyMaxRetries = 3

@@ -1,0 +1,143 @@
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
+# π-Skills Platform: Frontend + Snowflake MCP Bridge
+
+This repository now includes:
+
+- A React/Vite frontend for AI-assisted SQL workflows.
+- A Python MCP bridge service that exposes Snowflake tools over HTTP.
+
+View your app in AI Studio: https://ai.studio/apps/978c3c8d-5b8b-4493-816e-34e52b5d2d88
+
+## Detailed Project Documentation
+
+- End-to-end project and technology document: `docs/PROJECT_END_TO_END.md`
+
+## Prerequisites
+
+- Node.js 20+
+- Python 3.10+
+- pip
+
+## Local Setup
+
+1. Install frontend dependencies:
+   npm install
+
+2. Create your local env file:
+   - PowerShell: `Copy-Item .env.example .env.local`
+   - Bash: `cp .env.example .env.local`
+
+3. Fill secrets in .env.local:
+   - JWT_SECRET (required, 64-char hex; generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
+   - GEMINI_API_KEY
+   - SNOWFLAKE_ACCOUNT
+   - SNOWFLAKE_USER
+   - SNOWFLAKE_PASSWORD
+   - SNOWFLAKE_ROLE
+   - SNOWFLAKE_WAREHOUSE
+   - SNOWFLAKE_DATABASE
+   - SNOWFLAKE_SCHEMA
+   - VITE_MCP_BASE_URL (default: http://localhost:5000)
+
+If `JWT_SECRET` is missing, the MCP server intentionally fails startup.
+
+4. Install MCP backend dependencies:
+   npm run mcp:install
+
+## Run Locally
+
+### Option A: Run both services together
+
+npm run dev:full
+
+- Frontend: http://localhost:3000
+- MCP server: http://localhost:5000
+
+### Option B: Run separately
+
+Terminal 1:
+
+npm run dev
+
+Terminal 2:
+
+npm run mcp:dev
+
+## MCP Server Endpoints
+
+- Health: GET /health
+- Tool discovery: GET /mcp/tools
+- Tool invocation: POST /mcp/call
+- SSE status stream: GET /mcp/events
+
+## Implemented Snowflake Tools
+
+- run_query
+- list_databases
+- list_schemas
+- list_tables
+- describe_table
+- list_warehouses
+- warehouse_usage
+
+All tools are schema-described by the MCP bridge and enforce input validation.
+
+## Security Notes
+
+- Use a least-privilege Snowflake role (recommended: MCP_AI_ROLE).
+- Keep SQL_SAFETY_MODE=prod in production to enforce strict read-only statements.
+- Set MCP_CORS_ORIGINS to only trusted frontend origins.
+- Do not commit .env.local.
+
+## Example Tool Call
+
+POST /mcp/call
+
+{
+  "name": "list_tables",
+  "arguments": {
+    "database": "ANALYTICS_PROD",
+    "schema": "PUBLIC"
+  }
+}
+
+## Identity User Migration (No Placeholder Accounts)
+
+Use the admin migration script to provision only real users from your identity provider export.
+
+Script:
+
+`py -3.12 -m apps.api.scripts.migrate_identity_users --source <path-to-export> --provider <provider-name> --dry-run`
+
+Apply changes:
+
+`py -3.12 -m apps.api.scripts.migrate_identity_users --source <path-to-export> --provider <provider-name> --deactivate-missing`
+
+Supported input formats:
+
+- CSV
+- JSON (array of users or `{ "users": [...] }`)
+- JSONL
+
+Required fields per user:
+
+- `external_id` (or `id`)
+- `email`
+
+Optional fields:
+
+- `display_name` (or `name`)
+- `platform_role` (or `role`)
+- `is_active`
+
+Safety guarantees:
+
+- Blocks placeholder/test email domains (`*.local`, `example.com`, etc.)
+- Validates roles against platform RBAC
+- Upserts by `external_id`/`email`
+- Can deactivate identity-managed users missing from latest export
+- Never bootstraps local placeholder accounts
+

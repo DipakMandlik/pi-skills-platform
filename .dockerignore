@@ -1,0 +1,43 @@
+# Version control
+.git
+.gitignore
+
+# Python cache
+**/__pycache__
+**/*.py[cod]
+**/*.pyo
+**/.pytest_cache
+**/.ruff_cache
+
+# Dev environment
+.env
+.env.local
+.venv
+venv
+*.egg-info
+dist
+build
+
+# Test artifacts
+**/.coverage
+**/htmlcov
+**/coverage.xml
+
+# Legacy backends (not deployed)
+backend/
+server/
+
+# Docs and non-runtime files
+docs/
+*.md
+*.xlsx
+
+# Frontend (deployed separately if needed)
+apps/web/node_modules
+apps/web/dist
+apps/web/.next
+
+# IDE
+.vscode
+.idea
+*.swp

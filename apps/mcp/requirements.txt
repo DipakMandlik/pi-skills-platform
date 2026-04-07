@@ -1,0 +1,8 @@
+fastapi==0.116.1
+sentry-sdk[fastapi]==2.25.1
+uvicorn[standard]==0.35.0
+snowflake-connector-python==3.17.0; python_version < "3.14"
+snowflake-connector-python==1.9.1; python_version >= "3.14"
+python-dotenv==1.1.1
+sqlglot==27.17.0
+sqlalchemy==2.0.36
